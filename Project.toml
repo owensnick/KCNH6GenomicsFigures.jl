@@ -1,0 +1,13 @@
+name = "KCNH6GenomicsFigures"
+uuid = "689864d8-8b36-4b6c-b848-dbe270ba429c"
+authors = ["Nick Owens <owensnick@gmail.com> and contributors"]
+version = "0.1.0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
