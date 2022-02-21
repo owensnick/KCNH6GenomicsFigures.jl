@@ -137,8 +137,8 @@ function idtable(file="c:\\home\\resource\\Xt\\GenePageGeneralInfo_ManuallyCurat
     end
     close(io)
 
-    println("Total gene ids: ", length(unique(geneids)))
-    println("Total alt  ids: ", length(unique(altids)), "  ", length(altids))
+    # println("Total gene ids: ", length(unique(geneids)))
+    # println("Total alt  ids: ", length(unique(altids)), "  ", length(altids))
 
     df = DataFrame(GeneID=geneids, AltID=altids)
     
