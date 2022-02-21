@@ -2,8 +2,9 @@
 
 
 
-getspikefasta(projdir=getprojectdir()) = joinpath(projdir, "data", "ERCC92.fa")
+getspikefasta(projdir=getprojectdir()) = joinpath(projdir, "data", "ERCC92.fa.gz")
 getspikequantfile(projdir=getprojectdir()) = joinpath(projdir, "data", "spikemeta.tsv")
+gettranscriptomefile(projdir=getprojectdir()) = joinpath(projdir, "data", "XENTR_9.1_Xenbase_spike.nmt.fa.gz")
 
 
 """
@@ -63,7 +64,8 @@ end
 
 """
 function fastacomposition(file, k=2; end_filter=0, pseudocount=1)
-    reader = open(FASTA.Reader, file)
+    # reader = open(FASTA.Reader, file)
+    reader = FASTA.Reader(GzipDecompressorStream(open(file)))
 
     seqmeta = DataFrame(ID=String[], A=Int[], C=Int[], G=Int[], T=Int[], len=Int[], GC=Float64[])
     kmers = DNAMer{k}.(UInt.(0:(4^k - 1)))
@@ -80,6 +82,7 @@ function fastacomposition(file, k=2; end_filter=0, pseudocount=1)
         KC = [getindex(CK, k) + pseudocount for k in kmers]
         push!(kmerfreq, KC./sum(KC))
     end
+    close(reader)
     [seqmeta kmerfreq]
 end
 
@@ -113,6 +116,152 @@ function spikegcmodel(spikegc, k; τ=1)
     println("[SGM]\tComplete")
     sgc, models, sgc_tables
 end
+
+
+"""
+    isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(), showplot=false, pseudocount=2, top_spike_n=20)
+
+    Apply spike model to isoforms
+
+"""
+function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(), showplot=false, pseudocount=2, top_spike_n=20)
+
+    ### setup labels
+    samplelabels = Symbol.(meta.Label)
+
+    label = string("sg_k", k, "_s", pseudocount)
+    ### 0. kmer labels
+    KML = Symbol.(string.("K_", getkmers(k)))
+    println("[SGC]\tk = $k\t|kmers| = ", length(KML))
+
+    ### 2. Tr annotation
+    println("[SGC]\tAnnotating transcriptome...")
+    @time trcomp = fastacomposition(transcriptomefile, max(k, 1), pseudocount=pseudocount)
+
+    ### 2.a check to see fasta matches ids
+    if isempty(intersect(isotpm.Isoform, trcomp.ID))
+        isoids = Dict(trid => fullid for (trid, fullid) in zip(getindex.(split.(isotpm.Isoform, "|"), 2), isotpm.Isoform))
+        isoids = Dict(ifelse(startswith(fullid, "ERCC-"), first(split(fullid, "|")), trid) => fullid for (trid, fullid) in zip(getindex.(split.(isotpm.Isoform, "|"), 2), isotpm.Isoform))
+        trids = get.(Ref(isoids), trcomp.ID, trcomp.ID) 
+
+        @assert isempty(setdiff(isotpm.Isoform, trids)) ### ensure that an trcomp id is found for every member of isotpm
+        trcomp.ID = trids
+    end
+
+    ### 5. stack isoform tpm
+    println("[SGC]\tStacking transcriptome...")
+    @time isostack = stack(isotpm, samplelabels, [:Gene, :Isoform], variable_name=:Sample, value_name=:TPM) 
+    isfields = split.(string.(isostack.Sample), "_")
+    isostack[!, :SampleType] = first.(isfields);
+    isostack[!, :Time] = parse.(Int, last.(isfields))
+    isogc = innerjoin(isostack, trcomp, on=(:Isoform => :ID))
+    @show size(isogc)
+    # first(isogc, 4) |> showwide
+
+    ### n6. Apply model
+    println("[SGC]\tCalculating model...")
+    igc = applygcmodel(isogc, models)
+
+    ### 7. convert back to table
+    println("[SGC]\tBuilding corrected TPM table")
+
+
+    igg = combine(groupby(igc, [:Sample, :SampleType, :Time, :Gene]), :TPM => sum => :TPM, :ModelPredict => sum => :ModelPredict)
+    tpm = unstack(igg, :Gene, :Sample, :TPM)
+    @assert mapreduce(x -> !any(ismissing, x), |, eachcol(tpm))
+    dropmissing!(tpm)
+    tpmc = unstack(igg, :Gene, :Sample, :ModelPredict)
+    @assert mapreduce(x -> !any(ismissing, x), |, eachcol(tpmc))
+    dropmissing!(tpmc)
+    @assert tpmc.Gene == tpm.Gene
+
+    # ### 8. build model correction table
+    println("[SGC]\tBulding model stats table")
+    KV = Matrix(trcomp[!, KML])
+    dfs = DataFrame[]
+    for (m, l) in zip(models, ["UIC", "CR", "hiK"])
+        cf = coef(m)
+        α    = cf[1]
+        β_T  = cf[2]
+        β_Ki = cf[3:end]
+        β_K  = log.(KV)*β_Ki
+        df = DataFrame(alpha=α, beta_T=β_T, beta_K=β_K, eab=(exp.(α .+ β_K)))
+        rename!(df, Symbol.(string.(l, "_", names(df))))
+        push!(dfs, df)
+    end
+
+    ### model stats needs mrna and precursors
+    modelstats = [DataFrame(Isoform=trcomp.ID) reduce(hcat, dfs)]
+    isoweight = build_iso_weight(isotpm, meta)
+    iwm = leftjoin(isoweight[!, [:Gene, :Isoform, :Weight]], modelstats, on=:Isoform)
+    @show @where(iwm, ismissing.(:UIC_eab)).Gene
+    @assert all(g -> occursin(r"^ERCC-", g), @where(iwm, ismissing.(:UIC_eab)).Gene) ## confirm that only missing is spikes
+    dropmissing!(iwm)
+    # ### recalculate iso_weight here ## would be better to have alternative management of this
+    modelstats_gene = combine(groupby(iwm, :Gene, sort=true)) do df
+        ω = weights(df.Weight)
+        (mu_UIC_eab = mean(df.UIC_eab, ω),
+         sd_UIC_eab =  std(df.UIC_eab, ω, corrected=false),
+         mu_CR_eab  = mean(df.CR_eab,  ω),
+         sd_CR_eab  =  std(df.CR_eab,  ω, corrected=false),
+         mu_hiK_eab = mean(df.hiK_eab, ω),
+         sd_hiK_eab =  std(df.hiK_eab, ω, corrected=false))
+    end
+
+    # sort!(modelstats_gene, :Gene)
+
+    # modelstats_gene = leftjoin(tpm[!, [:Gene]], modelstats_gene, on=[:Gene])
+    # @assert !any(ismissing, modelstats_gene.mu_UIC_eab)
+    # dropmissing!(modelstats_gene)
+
+    if modelstats_gene.Gene != tpm.Gene
+        @show length(modelstats_gene.Gene), length(tpm.Gene)
+        display(setdiff(modelstats_gene.Gene, tpm.Gene))
+        display(setdiff(tpm.Gene, modelstats_gene.Gene))
+        display([tpm.Gene modelstats_gene.Gene])
+
+
+        @show sort(modelstats_gene.Gene) == sort(tpm.Gene)
+
+    end
+
+    @assert modelstats_gene.Gene == tpm.Gene
+    
+
+    # #### add FC into modelstats gene
+    uic_fields = filter(f -> occursin(r"UIC", string(f)), names(tpm))
+    cr_fields  = filter(f -> occursin(r"CR",  string(f)), names(tpm))
+    hik_fields = filter(f -> occursin(r"hiK", string(f)), names(tpm))
+
+    fc_uic = l2f(Matrix{Float64}(tpmc[!, uic_fields]), Matrix{Float64}(tpm[!, uic_fields]), 0.0)
+    fc_cr  = l2f(Matrix{Float64}(tpmc[!, cr_fields]),  Matrix{Float64}(tpm[!, cr_fields]), 0.0)
+    fc_hik = l2f(Matrix{Float64}(tpmc[!, hik_fields]), Matrix{Float64}(tpm[!, hik_fields]), 0.0)
+
+
+    modelstats_gene[!, :mu_fc_uic] = vec(nanmean(fc_uic, dims=2))
+    modelstats_gene[!, :mu_fc_cr]  = vec(nanmean(fc_cr,  dims=2))
+    modelstats_gene[!, :mu_fc_hik] = vec(nanmean(fc_hik, dims=2))
+    modelstats_gene[!, :max_fc_uic] = vec(nanabsmax(fc_uic, dims=2))
+    modelstats_gene[!, :max_fc_cr ] = vec(nanabsmax(fc_cr,  dims=2))
+    modelstats_gene[!, :max_fc_hik] = vec(nanabsmax(fc_hik, dims=2))
+
+
+
+    mu_U = mean(Matrix{Float64}(tpmc[!, r"UIC"]), dims=2) |> vec
+    mu_C = mean(Matrix{Float64}(tpmc[!, r"CR"]),  dims=2) |> vec
+    mu_H = mean(Matrix{Float64}(tpmc[!, r"hiK"]), dims=2) |> vec
+
+    #
+    modelstats_gene[!, :fc_C_U] = l2f(mu_C, mu_U, 0.0)
+    modelstats_gene[!, :fc_H_U] = l2f(mu_H, mu_U, 0.0)
+    modelstats_gene[!, :fc_H_C] = l2f(mu_H, mu_C, 0.0)
+
+
+    #
+    (label=label, igc=igc,  igg=igg, tpm=tpm, tpmc=tpmc, modelstats=modelstats, modelstats_gene=modelstats_gene)
+
+end
+
 
 
 
