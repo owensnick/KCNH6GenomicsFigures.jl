@@ -1,13 +1,18 @@
 using DataFrames, DataFramesMeta, CSV, Glob
 using CodecZlib, ProgressMeter
-using Statistics, StatsModels, GLM
+using Statistics, StatsBase, StatsModels, GLM, MultivariateStats
 using BioSequences, FASTX
 using Plots, StatsPlots, Measures
 
+using GaussianProcesses, Distributions
+
+
+theme(:wong2)
 
 include("loaddata.jl")
 include("spikecorrect.jl")
 include("plots.jl")
+include("gaussianprocesses.jl")
 
 function showwide(table, nc=10000)
     c = ENV["COLUMNS"]
