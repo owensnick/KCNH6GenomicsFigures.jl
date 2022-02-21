@@ -8,11 +8,11 @@ gettranscriptomefile(projdir=getprojectdir()) = joinpath(projdir, "data", "XENTR
 
 
 """
-    spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantfile=getspikequantfile(), showplot=false, pseudocount=1, top_spike_n=20)
+    spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantfile=getspikequantfile(), pseudocount=1, top_spike_n=20)
 
     Calculate the full spike correction
 """
-function spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantfile=getspikequantfile(), showplot=false, pseudocount=1, top_spike_n=20)
+function spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantfile=getspikequantfile(), pseudocount=1, top_spike_n=20)
 
     ### setup labels
     samplelabels = Symbol.(meta.Label)
@@ -119,12 +119,13 @@ end
 
 
 """
-    isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(), showplot=false, pseudocount=2, top_spike_n=20)
+    isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(),  pseudocount=2, top_spike_n=20)
 
     Apply spike model to isoforms
+    Applys model and calculates model transformation stats
 
 """
-function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(), showplot=false, pseudocount=2, top_spike_n=20)
+function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(), pseudocount=2, top_spike_n=20)
 
     ### setup labels
     samplelabels = Symbol.(meta.Label)
@@ -155,10 +156,9 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
     isostack[!, :SampleType] = first.(isfields);
     isostack[!, :Time] = parse.(Int, last.(isfields))
     isogc = innerjoin(isostack, trcomp, on=(:Isoform => :ID))
-    @show size(isogc)
-    # first(isogc, 4) |> showwide
+    
 
-    ### n6. Apply model
+    ### 6. Apply model
     println("[SGC]\tCalculating model...")
     igc = applygcmodel(isogc, models)
 
@@ -179,7 +179,7 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
     println("[SGC]\tBulding model stats table")
     KV = Matrix(trcomp[!, KML])
     dfs = DataFrame[]
-    for (m, l) in zip(models, ["UIC", "CR", "hiK"])
+    for (m, l) in zip(models, ["UIC", "hiK"])
         cf = coef(m)
         α    = cf[1]
         β_T  = cf[2]
@@ -194,25 +194,18 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
     modelstats = [DataFrame(Isoform=trcomp.ID) reduce(hcat, dfs)]
     isoweight = build_iso_weight(isotpm, meta)
     iwm = leftjoin(isoweight[!, [:Gene, :Isoform, :Weight]], modelstats, on=:Isoform)
-    @show @where(iwm, ismissing.(:UIC_eab)).Gene
-    @assert all(g -> occursin(r"^ERCC-", g), @where(iwm, ismissing.(:UIC_eab)).Gene) ## confirm that only missing is spikes
+    
+    @assert all(g -> occursin(r"^ERCC-", g), @subset(iwm, ismissing.(:UIC_eab)).Gene) ## confirm that only missing is spikes
     dropmissing!(iwm)
     # ### recalculate iso_weight here ## would be better to have alternative management of this
     modelstats_gene = combine(groupby(iwm, :Gene, sort=true)) do df
         ω = weights(df.Weight)
         (mu_UIC_eab = mean(df.UIC_eab, ω),
          sd_UIC_eab =  std(df.UIC_eab, ω, corrected=false),
-         mu_CR_eab  = mean(df.CR_eab,  ω),
-         sd_CR_eab  =  std(df.CR_eab,  ω, corrected=false),
          mu_hiK_eab = mean(df.hiK_eab, ω),
          sd_hiK_eab =  std(df.hiK_eab, ω, corrected=false))
     end
 
-    # sort!(modelstats_gene, :Gene)
-
-    # modelstats_gene = leftjoin(tpm[!, [:Gene]], modelstats_gene, on=[:Gene])
-    # @assert !any(ismissing, modelstats_gene.mu_UIC_eab)
-    # dropmissing!(modelstats_gene)
 
     if modelstats_gene.Gene != tpm.Gene
         @show length(modelstats_gene.Gene), length(tpm.Gene)
@@ -230,39 +223,77 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
 
     # #### add FC into modelstats gene
     uic_fields = filter(f -> occursin(r"UIC", string(f)), names(tpm))
-    cr_fields  = filter(f -> occursin(r"CR",  string(f)), names(tpm))
     hik_fields = filter(f -> occursin(r"hiK", string(f)), names(tpm))
 
     fc_uic = l2f(Matrix{Float64}(tpmc[!, uic_fields]), Matrix{Float64}(tpm[!, uic_fields]), 0.0)
-    fc_cr  = l2f(Matrix{Float64}(tpmc[!, cr_fields]),  Matrix{Float64}(tpm[!, cr_fields]), 0.0)
     fc_hik = l2f(Matrix{Float64}(tpmc[!, hik_fields]), Matrix{Float64}(tpm[!, hik_fields]), 0.0)
 
 
     modelstats_gene[!, :mu_fc_uic] = vec(nanmean(fc_uic, dims=2))
-    modelstats_gene[!, :mu_fc_cr]  = vec(nanmean(fc_cr,  dims=2))
     modelstats_gene[!, :mu_fc_hik] = vec(nanmean(fc_hik, dims=2))
     modelstats_gene[!, :max_fc_uic] = vec(nanabsmax(fc_uic, dims=2))
-    modelstats_gene[!, :max_fc_cr ] = vec(nanabsmax(fc_cr,  dims=2))
     modelstats_gene[!, :max_fc_hik] = vec(nanabsmax(fc_hik, dims=2))
 
 
-
     mu_U = mean(Matrix{Float64}(tpmc[!, r"UIC"]), dims=2) |> vec
-    mu_C = mean(Matrix{Float64}(tpmc[!, r"CR"]),  dims=2) |> vec
     mu_H = mean(Matrix{Float64}(tpmc[!, r"hiK"]), dims=2) |> vec
 
-    #
-    modelstats_gene[!, :fc_C_U] = l2f(mu_C, mu_U, 0.0)
     modelstats_gene[!, :fc_H_U] = l2f(mu_H, mu_U, 0.0)
-    modelstats_gene[!, :fc_H_C] = l2f(mu_H, mu_C, 0.0)
-
-
-    #
+    
     (label=label, igc=igc,  igg=igg, tpm=tpm, tpmc=tpmc, modelstats=modelstats, modelstats_gene=modelstats_gene)
 
 end
 
+### helper functions
+l2f(a, b, c::Float64) = log2.(a .+ c) .- log2.(b .+ c)
+function build_iso_weight(isotpm, meta)
+    labels = Symbol.(meta.Label) ### from older version of julia/DataFrames where DataFrame indexing used symbols
+    idlabels = setdiff(propertynames(isotpm), labels)
+    
+    isomean   = [isotpm[!, idlabels] DataFrame(MeanTPM=vec(mean(Matrix(isotpm[!, labels]), dims=2)))]
+    isoweight = combine(groupby(isomean, :Gene),  :Isoform => identity => :Isoform,
+                                                  :MeanTPM => identity => :MeanTPM,
+                                                  :MeanTPM => (x-> x/sum(x)) => :Weight)
+    isoweight[!, :Weight] = replace(isoweight.Weight, NaN => 1.0)
+    isoweight
+end
 
+
+nanmeanvec(x) = mean(filter(!isnan, x))
+nanmean(x; dims=1) = mapslices(nanmeanvec, x, dims=dims)
+
+function nanabsmaxvec(x)
+    x = filter(!isnan, x)
+    if isempty(x)
+        return 0.0
+    else
+        return maximum(abs, x)
+    end
+end
+nanabsmax(x ; dims=1) = mapslices(nanabsmaxvec, x, dims=dims)
+
+
+function applygcmodel(isogc, models)
+    println("[SGA]\tMaking tables...")
+
+    
+    igc_uic = @subset(isogc, :SampleType .== "UIC")
+    igc_hik = @subset(isogc, :SampleType .== "hiK");
+
+    igc_tables = [igc_uic, igc_hik]
+
+    println("[SGA]\tPredicting...")
+    for (m, it) in zip(models, igc_tables)
+        it[!, :ModelPredict] = exp.(GLM.predict(m, it))
+        it[!, :FC] = log2.((it.TPM .+ 0.01)./(it.ModelPredict .+ 0.01))
+    end
+
+    println("[SGA]\tBuilding tables... ")
+    fields = [intersect(propertynames(isogc), [:Gene, :Isoform, :Sample, :SampleType, :Time, :TPM]) ; [:ModelPredict, :FC]]
+    igc = mapreduce(it -> it[!, fields], vcat, igc_tables)
+    println("[SGA]\tComplete")
+    igc
+end
 
 
 ##### kmer functions
