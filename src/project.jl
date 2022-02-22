@@ -4,7 +4,9 @@ using Statistics, StatsBase, StatsModels, GLM, MultivariateStats
 using BioSequences, FASTX
 using Plots, StatsPlots, Measures
 
-using GaussianProcesses, Distributions
+using GaussianProcesses, Distributions, Suppressor
+
+using Clustering, ClusterOrderTools, Distances
 
 
 theme(:wong2)
@@ -13,6 +15,7 @@ include("loaddata.jl")
 include("spikecorrect.jl")
 include("plots.jl")
 include("gaussianprocesses.jl")
+include("clustering.jl")
 
 function showwide(table, nc=10000)
     c = ENV["COLUMNS"]
