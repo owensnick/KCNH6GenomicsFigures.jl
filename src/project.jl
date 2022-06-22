@@ -3,11 +3,11 @@ using CodecZlib, ProgressMeter
 using Statistics, StatsBase, StatsModels, GLM, MultivariateStats
 using BioSequences, FASTX
 using Plots, StatsPlots, Measures
-
 using GaussianProcesses, Distributions, Suppressor
-
 using Clustering, ClusterOrderTools, Distances
 
+using Enrichr
+using MotifScanner
 
 theme(:wong2)
 
@@ -16,6 +16,8 @@ include("spikecorrect.jl")
 include("plots.jl")
 include("gaussianprocesses.jl")
 include("clustering.jl")
+include("enrichr.jl")
+include("homer.jl")
 
 function showwide(table, nc=10000)
     c = ENV["COLUMNS"]
