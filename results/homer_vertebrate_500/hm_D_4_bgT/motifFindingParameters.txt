@@ -1,0 +1,1 @@
+cmd = homer_vb_500/pot_xen_hik_cluster_promoters.500.D4.fa fasta homer_vb_500/hm_D_4_bgT -fasta backgrounds/XENTR_9.1_Xenbase_spike.unique.tss.500.fa -p 12 -nomotif -mset vertebrates
