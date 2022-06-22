@@ -4,6 +4,8 @@ function loaddata()
     isotpm, isoweight, tpm = load_rsem_iso_tables(meta.Label, meta.File)
     stats, filtind = tablestats_filter(meta, tpm, lrt=0.4)
     ids = idtable()
+    
+    
     meta, tpm, isotpm, isoweight, stats, filtind, ids
 end
 
@@ -114,6 +116,7 @@ function tablestats_filter(meta, tpm; lrt=0.4, rl = 6, ns=2)
 
     stats = DataFrame(Gene=tpm.Gene, minv=minv, meanv=meanv, maxv=maxv, lr_UI=lr_UI, lr_HK=lr_HK, Index=1:length(minv))
 
+    # filtind = mapreduce(l -> stats[!, l] .>= rl, +, [:lr_UI, :lr_UI, :lr_HK]) .>= ns
     filtind = mapreduce(l -> stats[!, l] .>= rl, +, [:lr_UI, :lr_HK]) .>= ns
 
     stats, filtind
@@ -154,4 +157,25 @@ function longest_run(x, τ = 0)
         mrl = max(mrl, rl)
     end
     mrl
+end
+
+
+"""
+    loadpromoters(isoweight, file="XENTR_9.1_Xenbase_spike.promoter.500.tsv.gz"
+
+    Loads promoter coordinates, selects the maximally expressed isoform for each gene
+"""
+function loadpromoters(isoweight, file="XENTR_9.1_Xenbase_spike.promoter.500.tsv.gz", projdir=getprojectdir())
+    filepath = joinpath(projdir, "data", file)
+    proms = CSV.read(filepath, DataFrame)
+    promiso = leftjoin(@subset(isoweight, .!occursin.(r"^ERCC", :Gene)), proms, on=[:Gene, :Isoform])
+    @assert !any(ismissing, promiso.chrom)
+    dropmissing!(promiso)
+
+    promgene = combine(groupby(promiso, :Gene)) do df
+        i = argmax(df.Weight) 
+        df[i, Not([:Gene, :Isoform])]
+    end
+
+    promgene
 end
