@@ -12,7 +12,7 @@ gettranscriptomefile(projdir=getprojectdir()) = joinpath(projdir, "data", "XENTR
 
     Calculate the full spike correction
 """
-function spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantfile=getspikequantfile(), pseudocount=1, top_spike_n=20)
+function spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantfile=getspikequantfile(), pseudocount=1, top_spike_n=20, verbose=false)
 
     ### setup labels
     samplelabels = Symbol.(meta.Label)
@@ -20,10 +20,10 @@ function spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantf
 
     ### 0. kmer labels
     KML = Symbol.(string.("K_", getkmers(k)))
-    println("[SGC]\tk = $k\t|kmers| = ", length(KML))
+    verbose && println("[SGC]\tk = $k\t|kmers| = ", length(KML))
 
     ### 1. Spike annotation
-    println("[SGC]\tAnnotating spikes...")
+    verbose && println("[SGC]\tAnnotating spikes...")
     spikemeta = fastacomposition(spikefile, max(k, 1), end_filter=25, pseudocount=pseudocount)
     spikequant = CSV.read(spikequantfile, DataFrame)
     rename!(spikequant, [:NID, :ID, :Group, :Conc, :Mix2, :EFR, :log2_EFR])
@@ -32,8 +32,8 @@ function spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantf
     spd[!, :Conc] = coalesce.(spd.Conc, 0)
 
 
-    ### 4. Separate spike TPM
-    println("[SGC]\tStacking spikes...")
+    ### 2. Separate spike TPM
+    verbose && println("[SGC]\tStacking spikes...")
     spike_ind = occursin.(r"ERCC-", isotpm.Gene)
     ssi = sortperm(maximum(Matrix(isotpm[spike_ind, samplelabels]), dims=1) |> vec, rev=true)
 
@@ -48,9 +48,9 @@ function spike_gc_model(isotpm, k, meta;  spikefile=getspikefasta(), spikequantf
     @assert size(spikegc, 1) == size(spike_stack, 1)
 
 
-    ### 6. calc model
-    println("[SGC]\tCalculating model...")
-    sgc, models, sgc_tables = spikegcmodel(spikegc, k)
+    ### 3. calc model
+    verbose && println("[SGC]\tCalculating model...")
+    sgc, models, sgc_tables = spikegcmodel(spikegc, k, verbose=verbose)
 
 
     (label=label, sgc=sgc, sgc_tables=sgc_tables, models=models, spd=spd)
@@ -93,8 +93,8 @@ end
 
     Setup spike KMer linear model for UIC and hiK independently
 """
-function spikegcmodel(spikegc, k; τ=1)
-    println("[SGM]\tMaking tables...")
+function spikegcmodel(spikegc, k; τ=1, verbose=false)
+    verbose && println("[SGM]\tMaking tables...")
     
     sgc_uic = @subset(spikegc, :TPM .> τ, :ID .!= "ERCC-00116", :SampleType .== "UIC") ## ERCC-00116 performs poorly see https://doi.org/10.1016/j.celrep.2015.12.050
     sgc_hik = @subset(spikegc, :TPM .> τ, :ID .!= "ERCC-00116", :SampleType .== "hiK") ## ERCC-00116 performs poorly see https://doi.org/10.1016/j.celrep.2015.12.050
@@ -102,18 +102,18 @@ function spikegcmodel(spikegc, k; τ=1)
     sgc_tables = [sgc_uic, sgc_hik]
     
     F = get_kGC_formula(k)
-    println("[SGM]\tFormula: ", F)
-    println("[SGM]\tFitting models... ")
+    verbose && println("[SGM]\tFormula: ", F)
+    verbose && println("[SGM]\tFitting models... ")
     models = [lm(F, t) for t in sgc_tables]
-    println("[SGM]\tModel fit complete, predicting...")
+    verbose && println("[SGM]\tModel fit complete, predicting...")
     for (m, st) in zip(models, sgc_tables)
         st[!, :ModelPredict] = exp.(GLM.predict(m))
         st[!, :FC] = log2.((st.TPM .+ 0.01)./(st.ModelPredict .+ 0.01))
     end
 
-    println("[SGM]\tBuilding tables... ")
+    verbose && println("[SGM]\tBuilding tables... ")
     sgc = reduce(vcat, sgc_tables)
-    println("[SGM]\tComplete")
+    verbose && println("[SGM]\tComplete")
     sgc, models, sgc_tables
 end
 
@@ -125,7 +125,7 @@ end
     Applys model and calculates model transformation stats
 
 """
-function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(), pseudocount=2, top_spike_n=20)
+function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptomefile(), pseudocount=2, top_spike_n=20, verbose=false)
 
     ### setup labels
     samplelabels = Symbol.(meta.Label)
@@ -133,10 +133,10 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
     label = string("sg_k", k, "_s", pseudocount)
     ### 0. kmer labels
     KML = Symbol.(string.("K_", getkmers(k)))
-    println("[SGC]\tk = $k\t|kmers| = ", length(KML))
+    verbose && println("[SGC]\tk = $k\t|kmers| = ", length(KML))
 
     ### 2. Tr annotation
-    println("[SGC]\tAnnotating transcriptome...")
+    verbose && println("[SGC]\tAnnotating transcriptome...")
     @time trcomp = fastacomposition(transcriptomefile, max(k, 1), pseudocount=pseudocount)
 
     ### 2.a check to see fasta matches ids
@@ -150,7 +150,7 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
     end
 
     ### 5. stack isoform tpm
-    println("[SGC]\tStacking transcriptome...")
+    verbose && println("[SGC]\tStacking transcriptome...")
     @time isostack = stack(isotpm, samplelabels, [:Gene, :Isoform], variable_name=:Sample, value_name=:TPM) 
     isfields = split.(string.(isostack.Sample), "_")
     isostack[!, :SampleType] = first.(isfields);
@@ -159,11 +159,11 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
     
 
     ### 6. Apply model
-    println("[SGC]\tCalculating model...")
-    igc = applygcmodel(isogc, models)
+    verbose && println("[SGC]\tCalculating model...")
+    igc = applygcmodel(isogc, models, verbose=verbose)
 
     ### 7. convert back to table
-    println("[SGC]\tBuilding corrected TPM table")
+    verbose && println("[SGC]\tBuilding corrected TPM table")
 
 
     igg = combine(groupby(igc, [:Sample, :SampleType, :Time, :Gene]), :TPM => sum => :TPM, :ModelPredict => sum => :ModelPredict)
@@ -176,7 +176,7 @@ function isogc_mrna(isotpm, k, models, meta;  transcriptomefile=gettranscriptome
     @assert tpmc.Gene == tpm.Gene
 
     # ### 8. build model correction table
-    println("[SGC]\tBulding model stats table")
+    verbose && println("[SGC]\tBulding model stats table")
     KV = Matrix(trcomp[!, KML])
     dfs = DataFrame[]
     for (m, l) in zip(models, ["UIC", "hiK"])
@@ -273,8 +273,8 @@ end
 nanabsmax(x ; dims=1) = mapslices(nanabsmaxvec, x, dims=dims)
 
 
-function applygcmodel(isogc, models)
-    println("[SGA]\tMaking tables...")
+function applygcmodel(isogc, models; verbose=false)
+    verbose && println("[SGA]\tMaking tables...")
 
     
     igc_uic = @subset(isogc, :SampleType .== "UIC")
@@ -282,16 +282,16 @@ function applygcmodel(isogc, models)
 
     igc_tables = [igc_uic, igc_hik]
 
-    println("[SGA]\tPredicting...")
+    verbose && println("[SGA]\tPredicting...")
     for (m, it) in zip(models, igc_tables)
         it[!, :ModelPredict] = exp.(GLM.predict(m, it))
         it[!, :FC] = log2.((it.TPM .+ 0.01)./(it.ModelPredict .+ 0.01))
     end
 
-    println("[SGA]\tBuilding tables... ")
+    verbose && println("[SGA]\tBuilding tables... ")
     fields = [intersect(propertynames(isogc), [:Gene, :Isoform, :Sample, :SampleType, :Time, :TPM]) ; [:ModelPredict, :FC]]
     igc = mapreduce(it -> it[!, fields], vcat, igc_tables)
-    println("[SGA]\tComplete")
+    verbose && println("[SGA]\tComplete")
     igc
 end
 
