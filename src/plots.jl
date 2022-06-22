@@ -1,3 +1,16 @@
+
+### savedisplay save svg and display current figure
+function savedisplay(label, fmts=[".svg", ".png"], projdir=getprojectdir(), verbose=true)
+    p = plot!(fontfamily="helvetica")
+    files = joinpath.(projdir, "figures", string.(label, fmts))
+    verbose && println("Writing ", first(files))
+    mkpath(dirname(first(files)))
+    map(savefig, files)
+    
+    display(p)
+end
+
+
 function plotspikemodel(models, tables, labels, pred_field=:Conc; pred_trans=x -> log(x + 1), plot_model=true, kwargs...)
     phs = [plotmodel(m, t, pred_field, l, plot_model=plot_model) for (m, t, l) in zip(models, tables, labels)]
     for p in phs
