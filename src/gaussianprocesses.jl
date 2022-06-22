@@ -104,6 +104,11 @@ end
 function lr_cd_hist(gpc_pt)
     histogram2d(gpc_pt.LR, gpc_pt.CD, bins=250, ylims=(-20, 20), framestyle=:zerolines, size=(375*1*1.00, 300*1.00),
     xlabel="UIC vs HIK Likelihood Ratio", ylabel="Max Divergence (z-score)", fontfamily="helvetica", title="Differentially Expressed Genes")
+    total_up = sum((gpc_pt.LR .> 0) .& (gpc_pt.CD .> 0))
+    total_dn = sum((gpc_pt.LR .> 0) .& (gpc_pt.CD .< 0))
+    annotate!((2, 17.5, text(string(total_up, " genes"), font(14, "helvetica", :left))))
+    annotate!((2, -17.5, text(string(total_dn, " genes"), font(14, "helvetica", :left))))
+
 end
 
 ### plot gene
@@ -121,7 +126,7 @@ function plotgpset!(gene, genes, gpr, altids=[]; plotall=false, kwargs...)
             phs = [plotgpset(gpr[i]; suptitle=genes[i], kwargs...) for i in ind]
             plot(phs..., size=(1200, 500); kwargs...)
         else
-            plotgpset!(gpr[first(ind)] ; suptitle=genes[first(ind)], kwargs...)
+            plotgpset!(gpr[first(ind)] ; suptitle=last(split(genes[first(ind)], "|")), kwargs...)
         end
         
     else
@@ -170,8 +175,8 @@ function plotgpset!(gpr; samples=["U", "H"], showparams=false, suptitle="", kwar
         plot!(titlefont=font(8), top_margin=10mm)
     else
         lr, bic = gp_bic(gpr.f, [gpr.u, gpr.h])
-        s = string("  LR: ", tt(lr))#, ifelse(bic > 0, " ***", ""))
-        plot!(titlefont=font(10))
+        s = string(" | LR: ", tt(lr))#, ifelse(bic > 0, " ***", ""))
+        plot!(titlefont=font("helvetica", 10))
     end
     plot!(title=string(suptitle, s))#, titlefont=font(8, :white), top_margin=10mm)
     p
@@ -248,8 +253,9 @@ end
 function plot_gp_selection(fgs, fgenes, GPC; kwargs...)
     phs = [plotgpset(g, fgenes, GPC, showparams=false, samples=["U", "H"], fontfamily="helvetica") for g in fgs]
     for (i, (p, l)) in enumerate(zip(phs, fgs))
-        plot!(p, title=l) 
-        ylm = ylims()[2]
+        # plot!(p, title=l)
+     
+        ylm = ylims(p)[2]
         l = max(10^round(log10(ylm) - 1), 2)
         yt = l*round(ylm/l)
         plot!(p, yticks=[0, yt], ylims=(0, max(ylm, yt)))
