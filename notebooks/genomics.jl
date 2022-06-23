@@ -1,11 +1,12 @@
 include(joinpath("..", "src", "project.jl"));
+ENV["GKSwstype"] = "100" ### this needed for GR when running on server without a display terminal, comment out should you want GR to display figures rather than saving
 
 meta, tpm, isotpm, isoweight, stats, filtind, ids = loaddata();
 
 @show sum(filtind), mean(filtind);
 
-@time sgm = spike_gc_model(isotpm, 2, meta, pseudocount=2); ### build spike model
-@time isomodel = isogc_mrna(isotpm, 2, sgm.models, meta, pseudocount=2); ## apply correction
+@time sgm = spike_gc_model(isotpm, 2, meta, pseudocount=2, verbose=true); ### build spike model
+@time isomodel = isogc_mrna(isotpm, 2, sgm.models, meta, pseudocount=2, verbose=true); ## apply correction
 tpmc = isomodel.tpmc; ### spike gc corrected tpm
 
 isoc_weight = select(groupby(combine(groupby(isomodel.igc, [:Gene, :Isoform]), 
