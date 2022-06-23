@@ -11,7 +11,7 @@ Repository contains source data and code to understand transcriptional response 
 <img src="experimental_approach.png" width="75%">
 
 ## Prerequistes
-Julia >= 1.6, all julia packages and their versions are specified in the included Project.toml and Manifest.toml.
+Julia >= 1.7, all julia packages and their versions are specified in the included Project.toml and Manifest.toml.
 
 Additionally Python paackage https://requests.readthedocs.io/en/latest/ is within https://github.com/owensnick/Enrichr.jl via https://github.com/JuliaPy/PyCall.jl to interface with Enrichr API (https://maayanlab.cloud/Enrichr/) for gene set enrichments. Ensure Python, requests and PyCall is installed prior to installing this project.
 
