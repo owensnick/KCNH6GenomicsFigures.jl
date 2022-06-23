@@ -50,7 +50,7 @@ f_ind = findall(exfiltind);
 fgenes = tpmc.Gene[f_ind];
 
 
-GPC = @showprogress [gp_set_dt(i, meta, tpmc) for i ∈ f_ind];
+GPC = @showprogress "Gaussian Process Differential Expression: " [gp_set_dt(i, meta, tpmc) for i ∈ f_ind];
 
 metagp, tpmc_gp, gpc_pt = gptable(fgenes, GPC);
 
@@ -70,7 +70,7 @@ promclusters.loc = @with promclusters string.(:chrom, ":", :PromoterStart, "-", 
 prombed = @subset(promclusters[!, [:chrom, :PromoterStart, :PromoterStop, :CLabel, :strand, :Length, :Gene, :GeneName, :ClusterU, :ClusterD]], :Length .== 500);
 savepromoterclusterbed(promclusters);
 
-hommots = loadhomerres("..\\results\\homer_vertebrate_500\\");
+hommots = loadhomerres(joinpath(getprojectdir(), "results",  "homer_vertebrate_500"));
 
 @time en_ud = enrichr_ud(KMK_UD);
 

@@ -72,7 +72,7 @@ function rsem_valid_geneids(geneids, verbose=false)
 end
 
 function load_rsem_iso_tables(labels, files; tpmfield = :TPM, isopctfield=:IsoPct)
-    D = @showprogress map(load_rsem_iso, files)
+    D = @showprogress "Loading gene expresion files : " map(load_rsem_iso, files)
     genes = first(D).Gene
     @assert all(d -> genes == d.Gene, D)
 
