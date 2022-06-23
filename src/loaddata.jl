@@ -3,7 +3,7 @@ function loaddata()
     meta = loadmeta()    
     isotpm, isoweight, tpm = load_rsem_iso_tables(meta.Label, meta.File)
     stats, filtind = tablestats_filter(meta, tpm, lrt=0.4)
-    ids = idtable()
+    ids = nothing #idtable() don't load secondary gene symbols for online repo
     
     
     meta, tpm, isotpm, isoweight, stats, filtind, ids
@@ -124,7 +124,7 @@ end
 
 
 #### load xenbase ids to enable searching by secondary gene names
-function idtable(file="c:\\home\\resource\\Xt\\GenePageGeneralInfo_ManuallyCurated.txt")
+function idtable()
 
     geneids = String[]
     altids  = String[]
@@ -139,9 +139,6 @@ function idtable(file="c:\\home\\resource\\Xt\\GenePageGeneralInfo_ManuallyCurat
         end
     end
     close(io)
-
-    # println("Total gene ids: ", length(unique(geneids)))
-    # println("Total alt  ids: ", length(unique(altids)), "  ", length(altids))
 
     df = DataFrame(GeneID=geneids, AltID=altids)
     
