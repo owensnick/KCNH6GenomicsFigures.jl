@@ -29,6 +29,6 @@ instantiate ## for first time installation
 ```
 To regenerate figures either use jupyter notebook within `notebooks` directory or use script as follows:
 ```julia
- include("notebooks/genomics_figures.jl")
+ include("notebooks/genomics.jl")
  ```
 This will generate a `figures` folder and will generate all figure panels in `svg` and `png` format.
