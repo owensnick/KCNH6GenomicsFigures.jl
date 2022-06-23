@@ -40,7 +40,7 @@ function enrichr_ud(KMK_UD, genesets=get_genesets();  u_clsets = clustercombos()
     dfs = DataFrame[]
 
     for (cls, f, label) in zip([u_clsets, d_clsets], [:ClusterU, :ClusterD], ["Up", "Down"])
-        @showprogress for g in cls
+        @showprogress "Enrichr : " for g in cls
             ind = KMK_UD.gtable[!, f] .∈ Ref(g)
             uptbl = KMK_UD.gtable[ind, :]
             engenes = filter(f -> !occursin(r"LOC|gene[0-9]*", f), uptbl.GeneName) .|> (x -> replace(x, r"\.[0-9]$" => "")) .|> uppercase
