@@ -1,5 +1,8 @@
 # Gene expression response to membrane depolarisation in *Xenopus* embryos - Figure Notebook
 
+[![DOI](https://zenodo.org/badge/506325516.svg)](https://zenodo.org/badge/latestdoi/506325516)
+
+
 This julia project contains data and code to generate figures for:
 
 ### Membrane potential drives the exit from pluripotency and the ontogeny of cell fate via calcium and mTOR
