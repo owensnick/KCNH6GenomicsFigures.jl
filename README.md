@@ -5,9 +5,9 @@
 
 This julia project contains data and code to generate figures for:
 
-### Membrane potential drives the exit from pluripotency and the ontogeny of cell fate via calcium and mTOR
+Sempou, E., Kostiuk, V., Zhu, J., Cecilia Guerra, M., Tyan, L., Hwang, W., Camacho-Aguilar, E., Caplan, M. J., Zenisek, D., Warmflash, A., Owens, N., & Khokha, M. K. (2022). Membrane potential drives the exit from pluripotency and cell fate commitment via calcium and mTOR. Nature communications, 13(1), 6681. https://doi.org/10.1038/s41467-022-34363-w
 
-*Emily Sempou, Valentyna Kostiuk, Jie Zhu, Cecilia Guerra, Woong Hwang, Michael J. Caplan, David Zenisek, Aryeh Warmflash, Nick D. L. Owens, Mustafa K. Khokha*
+
 
 Repository contains source data and code to understand transcriptional response to membrane depolarisation of *Xenopus* embryos in early development through treatment with high K+. Overview of experimental design:
 
